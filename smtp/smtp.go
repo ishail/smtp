@@ -272,12 +272,12 @@ func (d *dataCloser) Close() error {
 // can be used to write the mail headers and body. The caller should
 // close the writer before calling any more methods on c. A call to
 // Data must be preceded by one or more calls to Rcpt.
-func (c *Client) Data() (io.WriteCloser, error) {
-	_, _, err := c.cmd(354, "DATA")
+func (c *Client) Data() (io.WriteCloser, int, string, error) {
+	code, resp, err := c.cmd(354, "DATA")
 	if err != nil {
-		return nil, err
+		return nil, 0, "", err
 	}
-	return &dataCloser{c, c.Text.DotWriter()}, nil
+	return &dataCloser{c, c.Text.DotWriter()}, code, resp, nil
 }
 
 var testHookStartTLS func(*tls.Config) // nil, except for tests
@@ -302,14 +302,14 @@ var testHookStartTLS func(*tls.Config) // nil, except for tests
 // attachments (see the mime/multipart package), or other mail
 // functionality. Higher-level packages exist outside of the standard
 // library.
-func SendMail(addr string, a Auth, from string, to []string, msg []byte) error {
+func SendMail(addr string, a Auth, from string, to []string, msg []byte) (int, string, error) {
 	c, err := Dial(addr)
 	if err != nil {
-		return err
+		return 0, "", err
 	}
 	defer c.Close()
 	if err = c.hello(); err != nil {
-		return err
+		return 0, "", err
 	}
 	if ok, _ := c.Extension("STARTTLS"); ok {
 		config := &tls.Config{ServerName: c.serverName}
@@ -317,37 +317,38 @@ func SendMail(addr string, a Auth, from string, to []string, msg []byte) error {
 			testHookStartTLS(config)
 		}
 		if err = c.StartTLS(config); err != nil {
-			return err
+			return 0, "", err
 		}
 	}
 	if a != nil && c.ext != nil {
 		if _, ok := c.ext["AUTH"]; ok {
 			if err = c.Auth(a); err != nil {
-				return err
+				return 0, "", err
 			}
 		}
 	}
 	if err = c.Mail(from); err != nil {
-		return err
+		return 0, "", err
 	}
 	for _, addr := range to {
 		if err = c.Rcpt(addr); err != nil {
-			return err
+			return 0, "", err
 		}
 	}
-	w, err := c.Data()
+	w, code, resp, err := c.Data()
 	if err != nil {
-		return err
+		return 0, "", err
 	}
 	_, err = w.Write(msg)
 	if err != nil {
-		return err
+		return 0, "", err
 	}
 	err = w.Close()
 	if err != nil {
-		return err
+		return 0, "", err
 	}
-	return c.Quit()
+	err = c.Quit()
+	return code, resp, err
 }
 
 // Extension reports whether an extension is support by the server.
