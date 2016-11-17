@@ -264,8 +264,7 @@ type dataCloser struct {
 
 func (d *dataCloser) Close() error {
 	d.WriteCloser.Close()
-	_, _, err := d.c.Text.ReadResponse(250)
-	return err
+	return nil
 }
 
 // Data issues a DATA command to the server and returns a writer that
@@ -308,9 +307,11 @@ func SendMail(addr string, a Auth, from string, to []string, msg []byte) (int, s
 		return 0, "", err
 	}
 	defer c.Close()
+
 	if err = c.hello(); err != nil {
 		return 0, "", err
 	}
+
 	if ok, _ := c.Extension("STARTTLS"); ok {
 		config := &tls.Config{ServerName: c.serverName}
 		if testHookStartTLS != nil {
@@ -320,6 +321,7 @@ func SendMail(addr string, a Auth, from string, to []string, msg []byte) (int, s
 			return 0, "", err
 		}
 	}
+
 	if a != nil && c.ext != nil {
 		if _, ok := c.ext["AUTH"]; ok {
 			if err = c.Auth(a); err != nil {
@@ -327,6 +329,7 @@ func SendMail(addr string, a Auth, from string, to []string, msg []byte) (int, s
 			}
 		}
 	}
+
 	if err = c.Mail(from); err != nil {
 		return 0, "", err
 	}
@@ -335,20 +338,26 @@ func SendMail(addr string, a Auth, from string, to []string, msg []byte) (int, s
 			return 0, "", err
 		}
 	}
-	w, code, resp, err := c.Data()
+
+	w, _, _, err := c.Data()
 	if err != nil {
 		return 0, "", err
 	}
-	_, err = w.Write(msg)
+
+	if _, err = w.Write(msg); err != nil {
+		return 0, "", err
+	}
+
+	if err = w.Close(); err != nil {
+		return 0, "", err
+	}
+
+	code, resp, err := c.Text.ReadResponse(250)
 	if err != nil {
 		return 0, "", err
 	}
-	err = w.Close()
-	if err != nil {
-		return 0, "", err
-	}
-	err = c.Quit()
-	return code, resp, err
+
+	return code, resp, c.Quit()
 }
 
 // Extension reports whether an extension is support by the server.

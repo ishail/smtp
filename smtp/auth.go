@@ -39,8 +39,7 @@ type ServerInfo struct {
 }
 
 type plainAuth struct {
-	identity, username, password string
-	host                         string
+	identity, username, password, host string
 }
 
 // PlainAuth returns an Auth that implements the PLAIN authentication
